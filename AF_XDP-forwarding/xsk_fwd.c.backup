@@ -123,121 +123,6 @@ struct bpool {
 	struct xsk_umem *umem;
 };
 
-// FIXME
-#ifndef MAX_BURST_RX
-#define MAX_BURST_RX 64
-#endif
-
-#ifndef MAX_BURST_TX
-#define MAX_BURST_TX 64
-#endif
-
-struct burst_rx {
-	u64 addr[MAX_BURST_RX];
-	u32 len[MAX_BURST_RX];
-};
-
-struct burst_tx {
-	u64 addr[MAX_BURST_TX];
-	u32 len[MAX_BURST_TX];
-	u32 n_pkts;
-};
-
-struct port_params {
-	struct xsk_socket_config xsk_cfg;
-	struct bpool *bp;
-	const char *iface;
-	u32 iface_queue;
-};
-
-struct port {
-	struct port_params params;
-
-	struct bcache *bc;
-
-	struct xsk_ring_cons rxq;
-	struct xsk_ring_prod txq;
-	struct xsk_ring_prod umem_fq;
-	struct xsk_ring_cons umem_cq;
-	struct xsk_socket *xsk;
-	int umem_fq_initialized;
-
-	u64 n_pkts_rx;
-	u64 n_pkts_tx;
-};
-// FIXME
-
-// FIXME
-#ifndef MAX_PORTS_PER_THREAD
-#define MAX_PORTS_PER_THREAD 16
-#endif
-
-struct thread_data {
-	struct port *ports_rx[MAX_PORTS_PER_THREAD];
-	struct port *ports_tx[MAX_PORTS_PER_THREAD];
-	u32 n_ports_rx;
-	struct burst_rx burst_rx;
-	struct burst_tx burst_tx[MAX_PORTS_PER_THREAD];
-	u32 cpu_core_id;
-	int quit;
-};
-// FIXME
-
-// FIXME
-static const struct bpool_params bpool_params_default = {
-	.n_buffers = 64 * 1024,
-	.buffer_size = XSK_UMEM__DEFAULT_FRAME_SIZE,
-	.mmap_flags = 0,
-
-	.n_users_max = 16,
-	.n_buffers_per_slab = XSK_RING_PROD__DEFAULT_NUM_DESCS * 2,
-};
-
-static const struct xsk_umem_config umem_cfg_default = {
-	.fill_size = XSK_RING_PROD__DEFAULT_NUM_DESCS * 2,
-	.comp_size = XSK_RING_CONS__DEFAULT_NUM_DESCS,
-	.frame_size = XSK_UMEM__DEFAULT_FRAME_SIZE,
-	.frame_headroom = XSK_UMEM__DEFAULT_FRAME_HEADROOM,
-	.flags = 0,
-};
-
-static const struct port_params port_params_default = {
-	.xsk_cfg = {
-		.rx_size = XSK_RING_CONS__DEFAULT_NUM_DESCS,
-		.tx_size = XSK_RING_PROD__DEFAULT_NUM_DESCS,
-		.libxdp_flags = 0,
-		.xdp_flags = XDP_FLAGS_DRV_MODE,
-		.bind_flags = XDP_USE_NEED_WAKEUP,
-	},
-
-	.bp = NULL,
-	.iface = NULL,
-	.iface_queue = 0,
-};
-
-#ifndef MAX_PORTS
-#define MAX_PORTS 64
-#endif
-
-#ifndef MAX_THREADS
-#define MAX_THREADS 64
-#endif
-
-static struct bpool_params bpool_params;
-static struct xsk_umem_config umem_cfg;
-static struct bpool *bp;
-
-static struct port_params port_params[MAX_PORTS];
-static struct port *ports[MAX_PORTS];
-static u64 n_pkts_rx[MAX_PORTS];
-static u64 n_pkts_tx[MAX_PORTS];
-static int n_ports;
-
-static pthread_t threads[MAX_THREADS];
-static struct thread_data thread_data[MAX_THREADS];
-static int n_threads;
-// FIXME
-
 static struct bpool *
 bpool_init(struct bpool_params *params,
 	   struct xsk_umem_config *umem_cfg)
@@ -431,20 +316,11 @@ bcache_free(struct bcache *bc)
 static inline u32
 bcache_cons_check(struct bcache *bc, u32 n_buffers)
 {
-	//printf("%s) 0\n", __func__);
-
 	struct bpool *bp = bc->bp;
-	//printf("%s) 0.1\n", __func__);
 	u64 n_buffers_per_slab = bp->params.n_buffers_per_slab;
-	//printf("%s) 0.2\n", __func__);
 	u64 n_buffers_cons = bc->n_buffers_cons;
-	//printf("%s) 0.3\n", __func__);
 	u64 n_slabs_available;
-	//printf("%s) 0.4\n", __func__);
 	u64 *slab_full;
-	//printf("%s) 0.5\n", __func__);
-
-	//printf("%s) 1\n", __func__);
 
 	/*
 	 * Consumer slab is not empty: Use what's available locally. Do not
@@ -455,8 +331,6 @@ bcache_cons_check(struct bcache *bc, u32 n_buffers)
 		return (n_buffers_cons < n_buffers) ?
 			n_buffers_cons :
 			n_buffers;
-
-	//printf("%s) 2\n", __func__);
 
 	/*
 	 * Consumer slab is empty: look to trade the current consumer slab
@@ -469,15 +343,11 @@ bcache_cons_check(struct bcache *bc, u32 n_buffers)
 		return 0;
 	}
 
-	//printf("%s) 3\n", __func__);
-
 	n_slabs_available--;
 	slab_full = bp->slabs[n_slabs_available];
 	bp->slabs[n_slabs_available] = bc->slab_cons;
 	bp->n_slabs_available = n_slabs_available;
 	pthread_mutex_unlock(&bp->lock);
-
-	//printf("%s) 4\n", __func__);
 
 	bc->slab_cons = slab_full;
 	bc->n_buffers_cons = n_buffers_per_slab;
@@ -539,7 +409,6 @@ bcache_prod(struct bcache *bc, u64 buffer)
  * packet forwarding to happen with no packet buffer copy, all the sockets need
  * to share the same UMEM area, which is used as the buffer pool memory.
  */
-#if 0
 #ifndef MAX_BURST_RX
 #define MAX_BURST_RX 64
 #endif
@@ -581,7 +450,6 @@ struct port {
 	u64 n_pkts_rx;
 	u64 n_pkts_tx;
 };
-#endif
 
 static void
 port_free(struct port *p)
@@ -602,21 +470,12 @@ port_free(struct port *p)
 	free(p);
 }
 
-#define jihoon
-
 static struct port *
 port_init(struct port_params *params)
 {
-	static u32 umem_refcount = 0;
-
 	struct port *p;
 	u32 umem_fq_size, pos = 0;
 	int status, i;
-
-#ifdef jihoon
-	// FIXME : So Important Source!!! : FIXME
-	params->bp = bp;
-#endif /* jihoon */
 
 	/* Memory allocation and initialization. */
 	p = calloc(sizeof(struct port), 1);
@@ -625,9 +484,6 @@ port_init(struct port_params *params)
 
 	memcpy(&p->params, params, sizeof(p->params));
 	umem_fq_size = params->bp->umem_cfg.fill_size;
-
-	// FIXME
-	printf("%s : init...\n", p->params.iface);
 
 	/* bcache. */
 	p->bc = bcache_init(params->bp);
@@ -648,88 +504,8 @@ port_init(struct port_params *params)
 					   &p->umem_fq,
 					   &p->umem_cq,
 					   &params->xsk_cfg);
-
-	// FIXME
-	printf("status : %d\n", status);
-	printf("umem_refcount : %d\n", umem_refcount);
-#ifdef jihoon
-	if (status && umem_refcount == 0) 
-	{
-		/* TODO : Native/Generic Fallback Here */
-		printf("%s : Full-Fallback...\n", p->params.iface);
-
-		port_free(p);
-		bpool_free(bp);
-
-		sleep(1);
-
-		bp = bpool_init(&bpool_params, &umem_cfg);
-		if (!bp) {
-			printf("Buffer pool initialization failed.\n");
-			return -1;
-		}
-
-		// FIXME : So Important Source!!! : FIXME
-		params->bp = bp;
-
-		p = calloc(sizeof(struct port), 1);
-		if (!p)
-			return NULL;
-
-		memcpy(&p->params, params, sizeof(p->params));
-		umem_fq_size = params->bp->umem_cfg.fill_size;
-
-		p->bc = bcache_init(params->bp);
-		if (!p->bc ||
-				(bcache_slab_size(p->bc) < umem_fq_size) ||
-				(bcache_cons_check(p->bc, umem_fq_size) < umem_fq_size)) {
-			port_free(p);
-			return NULL;
-		}
-
-		params->xsk_cfg.xdp_flags = XDP_FLAGS_SKB_MODE;
-		status = xsk_socket__create_shared(&p->xsk,
-				params->iface,
-				params->iface_queue,
-				params->bp->umem,
-				&p->rxq,
-				&p->txq,
-				&p->umem_fq,
-				&p->umem_cq,
-				&params->xsk_cfg);
-	}
-	else if (status && umem_refcount > 0)
-	{
-		/* TODO : Native/Generic Fallback Here */
-		printf("%s : Semi-Fallback...\n", p->params.iface);
-
-		port_free(p);
-
-		sleep(1);
-
-		p->bc = bcache_init(params->bp);
-		if (!p->bc ||
-				(bcache_slab_size(p->bc) < umem_fq_size) ||
-				(bcache_cons_check(p->bc, umem_fq_size) < umem_fq_size)) {
-			port_free(p);
-			return NULL;
-		}
-
-		params->xsk_cfg.xdp_flags = XDP_FLAGS_SKB_MODE;
-		status = xsk_socket__create_shared(&p->xsk,
-				params->iface,
-				params->iface_queue,
-				params->bp->umem,
-				&p->rxq,
-				&p->txq,
-				&p->umem_fq,
-				&p->umem_cq,
-				&params->xsk_cfg);
-	}
-
-	// FIXME
 	if (status) {
-		printf("%s : Fallback Failed...!\n\n", p->params.iface);
+		port_free(p);
 		return NULL;
 	}
 
@@ -743,10 +519,6 @@ port_init(struct port_params *params)
 	xsk_ring_prod__submit(&p->umem_fq, umem_fq_size);
 	p->umem_fq_initialized = 1;
 
-	// FIXME
-	umem_refcount++;
-#endif /* jihoon */
-
 	return p;
 }
 
@@ -755,33 +527,12 @@ port_rx_burst(struct port *p, struct burst_rx *b)
 {
 	u32 n_pkts, pos, i;
 
-	//printf("%s) %s Rx\n", __func__, p->params.iface);
-	//printf("%s) 1\n", __func__);
-
 	/* Free buffers for FQ replenish. */
 	n_pkts = ARRAY_SIZE(b->addr);
 
-	//printf("%s) 2\n", __func__);
-
-	/*
-	printf("%s) 2.1) p->bc=%x\n", __func__, p->bc);
-	printf("%s) 2.2) n_pkts=%d\n", __func__, n_pkts);
-	printf("%s) 2.3) p->bc->bp=%p\n", __func__, p->bc->bp);
-	printf("%s) 2.3) p->bc->bp->n_slabs=%d\n", __func__, p->bc->bp->n_slabs);
-	printf("%s) 2.3) p->bc->bp->n_slabs_reserved=%d\n", __func__, p->bc->bp->n_slabs_reserved);
-	printf("%s) 2.3) p->bc->bp->n_buffers=%d\n", __func__, p->bc->bp->n_buffers);
-	u32 n_buffers = p->bc->bp->params.n_buffers;
-	printf("%s) 2.3) n_buffers=%d\n", __func__, n_buffers);
-	u32 buffer_size = p->bc->bp->params.buffer_size;
-	printf("%s) 2.3) buffer_size=%d\n", __func__, buffer_size);
-	u64 n_buffers_per_slab = p->bc->bp->params.n_buffers_per_slab;
-	printf("%s) 2.3) n_buffers_per_slab=%d\n", __func__, n_buffers_per_slab);
 	n_pkts = bcache_cons_check(p->bc, n_pkts);
-	*/
 	if (!n_pkts)
 		return 0;
-
-	//printf("%s) 3\n", __func__);
 
 	/* RXQ. */
 	n_pkts = xsk_ring_cons__peek(&p->rxq, n_pkts, &pos);
@@ -797,19 +548,13 @@ port_rx_burst(struct port *p, struct burst_rx *b)
 		return 0;
 	}
 
-	//printf("%s) 4\n", __func__);
-
 	for (i = 0; i < n_pkts; i++) {
 		b->addr[i] = xsk_ring_cons__rx_desc(&p->rxq, pos + i)->addr;
 		b->len[i] = xsk_ring_cons__rx_desc(&p->rxq, pos + i)->len;
 	}
 
-	//printf("%s) 5\n", __func__);
-
 	xsk_ring_cons__release(&p->rxq, n_pkts);
 	p->n_pkts_rx += n_pkts;
-
-	//printf("%s) 6\n", __func__);
 
 	/* UMEM FQ. */
 	for ( ; ; ) {
@@ -829,17 +574,11 @@ port_rx_burst(struct port *p, struct burst_rx *b)
 		}
 	}
 
-	//printf("%s) 7\n", __func__);
-
 	for (i = 0; i < n_pkts; i++)
 		*xsk_ring_prod__fill_addr(&p->umem_fq, pos + i) =
 			bcache_cons(p->bc);
 
-	//printf("%s) 8\n", __func__);
-
 	xsk_ring_prod__submit(&p->umem_fq, n_pkts);
-
-	//printf("%s) 9\n", __func__);
 
 	return n_pkts;
 }
@@ -892,7 +631,6 @@ port_tx_burst(struct port *p, struct burst_tx *b)
  *
  * Packet forwarding threads.
  */
-#if 0
 #ifndef MAX_PORTS_PER_THREAD
 #define MAX_PORTS_PER_THREAD 16
 #endif
@@ -906,7 +644,6 @@ struct thread_data {
 	u32 cpu_core_id;
 	int quit;
 };
-#endif
 
 static void swap_mac_addresses(void *data)
 {
@@ -938,14 +675,10 @@ thread_func(void *arg)
 		struct burst_tx *btx = &t->burst_tx[i];
 		u32 n_pkts, j;
 
-		//printf("hello 1\n");
-
 		/* RX. */
 		n_pkts = port_rx_burst(port_rx, brx);
 		if (!n_pkts)
 			continue;
-
-		//printf("hello 2\n");
 
 		/* Process & TX. */
 		for (j = 0; j < n_pkts; j++) {
@@ -953,20 +686,17 @@ thread_func(void *arg)
 			u8 *pkt = xsk_umem__get_data(port_rx->params.bp->addr,
 						     addr);
 
-			//swap_mac_addresses(pkt);
+			swap_mac_addresses(pkt);
 
 			btx->addr[btx->n_pkts] = brx->addr[j];
 			btx->len[btx->n_pkts] = brx->len[j];
 			btx->n_pkts++;
 
-			//if (btx->n_pkts == MAX_BURST_TX) {
-			if (btx->n_pkts) {
+			if (btx->n_pkts == MAX_BURST_TX) {
 				port_tx_burst(port_tx, btx);
 				btx->n_pkts = 0;
 			}
 		}
-
-		//printf("hello 3\n");
 	}
 
 	return NULL;
@@ -975,7 +705,6 @@ thread_func(void *arg)
 /*
  * Process
  */
-#if 0
 static const struct bpool_params bpool_params_default = {
 	.n_buffers = 64 * 1024,
 	.buffer_size = XSK_UMEM__DEFAULT_FRAME_SIZE,
@@ -1028,7 +757,6 @@ static int n_ports;
 static pthread_t threads[MAX_THREADS];
 static struct thread_data thread_data[MAX_THREADS];
 static int n_threads;
-#endif
 
 static void
 print_usage(char *prog_name)
@@ -1363,4 +1091,3 @@ int main(int argc, char **argv)
 
 	return 0;
 }
-
